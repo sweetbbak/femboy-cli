@@ -79,7 +79,10 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
-echo "$choice"
+
+[ -z "$choice" ] && {
+    choice="$(gum choose "${both[@]}")"
+}
 
 main() {
     choice="${choice//\"/}"
