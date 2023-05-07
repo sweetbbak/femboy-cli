@@ -1,53 +1,19 @@
-#!/bin/bash
+#!/bin/sh
+# shellcheck disable=SC2086
 
 url="https://api.waifu.pics"
-dir="$HOME/Pictures/waifu"
+images_dir="$HOME/Pictures/waifu"
+test -d "$images_dir" || mkdir -p "$images_dir"
+image_protocol="kitty +kitten icat"
+# alternatively you can use sixel, which is a superior protocol (not supported by kitty, but most terminals do support it)
+# you need the libsixel package installed for it to work
+# image_protocol="img2sixel -w 800"
 
-[ ! -d "$dir" ] && {
-    mkdir -p "$dir"
-}
-
-nsfw_categories=(
-    nsfw/waifu
-    nsfw/neko
-    nsfw/trap
-    nsfw/blowjob
-)
-sfw_categories=(
-    sfw/waifu
-    sfw/neko
-    sfw/shinobu
-    sfw/megumin
-    sfw/bully
-    sfw/cuddle
-    sfw/cry
-    sfw/hug
-    sfw/awoo
-    sfw/kiss
-    sfw/lick
-    sfw/pat
-    sfw/smug
-    sfw/bonk
-    sfw/yeet
-    sfw/blush
-    sfw/smile
-    sfw/wave
-    sfw/highfive
-    sfw/handhold
-    sfw/nom
-    sfw/bite
-    sfw/glomp
-    sfw/slap
-    sfw/kill
-    sfw/kick
-    sfw/happy
-    sfw/wink
-    sfw/poke
-    sfw/dance
-    sfw/cringe
-)
-
-both=("${nsfw_categories[@]}" "${sfw_categories[@]}")
+endpoints="$(curl -s 'https://api.waifu.pics/endpoints')"
+sfw_categories=$(printf "%s" "$endpoints" | tr -d \" | sed -nE "s@\{sfw:\[([^]*]*)\].*@sfw\/\1@p" | sed "s/,/\nsfw\//g")
+nsfw_categories=$(printf "%s" "$endpoints" | tr -d \" | sed -nE "s@.*nsfw:\[([^]*]*)\].*@nsfw/\1@p" | sed "s/,/\nnsfw\//g")
+both="${sfw_categories}
+${nsfw_categories}"
 
 print_help() {
     printf "%s\n" "USAGE:"
@@ -55,55 +21,31 @@ print_help() {
     printf "%s\n" "OPTIONS:"
     printf "\t%s\n" "-n,--nsfw"
     printf "\t%s\n" "-s,--sfw"
+    printf "\t%s\n" "-t,--tag"
 }
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        -n|--nsfw)
-            choice="$(gum choose "${nsfw_categories[@]}")"
-        ;;
-        -s|--sfw)
-            choice="$(gum choose "${sfw_categories[@]}")"
-        ;;
-        -h|--help)
-            print_help
-            exit 0
-        ;;
-        -t|--tag)
-            shift
-            choice="$1"
-        ;;
-        *)
-            choice="$(gum choose "${both[@]}")"
-        ;;
+        -n|--nsfw) choice="$(gum choose $nsfw_categories)" ;;
+        -s|--sfw) choice="$(gum choose $sfw_categories)" ;;
+        -h|--help) print_help && exit 0 ;;
+        -t|--tag) shift && choice="$1" ;;
+        *) choice="$(gum choose $both)" ;;
     esac
     shift
 done
 
-[ -z "$choice" ] && {
-    choice="$(gum choose "${both[@]}")"
-}
+[ -z "$1" ] && choice="$(gum choose $both)"
+[ -z "$choice" ] && exit 1
 
 main() {
-    choice="${choice//\"/}"
     choice="${url}/${choice}"
-
-    temp="$(mktemp)"
-    xh get "${choice}" > "$temp" 
-
-    pic="$(jq '.url' < "$temp")"
-    title="${pic##*/}"
-    title="${title//\"/}"
-    pic="${pic//\"/}"
-    # pic="$(echo "$pic" | sed 's/\"//g')"
-    out="${dir}/${title}"
-
-    curl -s "$pic" --output $out
-    kitty +kitten icat "$out"
-
-    [ -f "$temp" ] && {
-        rm "$temp"
-    }
+    pic=$(curl -s "$choice" | sed -nE "s@.*\"url\":\"([^\"]*)\".*@\1@p")
+    title=$(printf "%s" "$pic" | sed -nE "s@.*/([^\.]*\.(jpg|jpeg|png|webp|gif))@\1@p")
+    out="${images_dir}/${title}"
+    [ -z "$out" ] && printf "Couldn't get the image, exiting now." && exit 1
+    curl -s "$pic" --output "$out"
+    $image_protocol "$out"
 }
 
 main
